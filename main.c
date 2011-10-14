@@ -3,20 +3,39 @@
 #include <clutter/clutter.h>
 #include <math.h>
 #include <assert.h>
+#include <stdlib.h>
+
+/** Load slides from pdf */
+void load_slides(char *filename, int *page_count, cairo_surface_t ***pages)
+{
+   PopplerDocument *document = poppler_document_new_from_file(filename, NULL, NULL);
+   const int pc = poppler_document_get_n_pages(document);
+   cairo_surface_t **ps = (cairo_surface_t**) malloc(sizeof(void*) * pc);
+   assert (ps != NULL);
+   *pages = ps;
+   *page_count = pc;
+
+   /* initialize surfaces */
+   for (int i=0; i<pc; ++i) {
+      PopplerPage *page = poppler_document_get_page(document, i);
+      double doc_w, doc_h;
+      poppler_page_get_size(page, &doc_w, &doc_h);
+      cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ceil(doc_w), (int)ceil(doc_h));
+      cairo_t *cr = cairo_create(surface);
+      poppler_page_render(page, cr);
+      ps[i] = surface;
+   }
+}
 
 int main(int argc, char** argv)
 {
-   assert (argc > 1);
+   assert (argc == 2);
    g_type_init();
    char *filename = "file:///home/beza1e1/dev/pdfpresenter/example.pdf";
-   double doc_w, doc_h;
-   PopplerDocument *document = poppler_document_new_from_file(filename, NULL, NULL);
-   int page_num = 2;
-   PopplerPage *page = poppler_document_get_page(document, page_num);
-   poppler_page_get_size(page, &doc_w, &doc_h);
-   cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)ceil(doc_w), (int)ceil(doc_h));
-   cairo_t *cr = cairo_create(surface);
-   poppler_page_render(page, cr);
+
+   cairo_surface_t **pages;
+   int page_count;
+   load_slides(filename, &page_count, &pages);
 
    if (clutter_init (&argc, &argv) != CLUTTER_INIT_SUCCESS)
        return 1;
@@ -39,6 +58,5 @@ int main(int argc, char** argv)
 
    clutter_main();
 
-   cairo_surface_destroy(surface);
    return 0;
 }
