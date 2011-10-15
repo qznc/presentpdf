@@ -41,6 +41,7 @@ static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer da
 
    /* render pdf */
    poppler_page_render(page, cr);
+   printf("rendered page %d\n", info->index);
 
    return true;
 }
@@ -106,7 +107,7 @@ static void previous_slide(void)
 static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
 {
    ClutterKeyEvent *event = (ClutterKeyEvent*) ev;
-   printf("key event %d %d %d\n", event->keyval, event->hardware_keycode, event->unicode_value);
+   printf("key press %d (%d %d)\n", event->keyval, event->hardware_keycode, event->unicode_value);
    switch (event->keyval) {
       case 65363: /* RIGHT */
       case ' ':
@@ -130,10 +131,15 @@ static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
 
 int main(int argc, char** argv)
 {
+   if (argc == 1) {
+      printf("Usage: %s [filename]\n", argv[0]);
+      return 0;
+   }
    assert (argc == 2);
-   g_type_init();
-   char *filename = "file:///home/beza1e1/dev/pdfpresenter/example.pdf";
+   char filename[1000] = "file://"; // TODO length safe?
+   realpath(argv[1], filename+7);
 
+   g_type_init();
    if (clutter_init (&argc, &argv) != CLUTTER_INIT_SUCCESS)
        return 1;
 
