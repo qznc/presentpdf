@@ -1,15 +1,17 @@
+#include <limits.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <assert.h>
+#include <math.h>
+
 #include <cairo.h>
 #include <poppler.h>
 #include <clutter/clutter.h>
-#include <math.h>
-#include <assert.h>
-#include <stdlib.h>
-#include <stdbool.h>
 
 /** presenter stage shows the display for the talker */
 //static ClutterActor *presenter_stage;
 /** show stage is the display for the audience */
-static ClutterActor *show_stage;
+static ClutterStage *show_stage;
 /** number of slides */
 static unsigned slide_count;
 /** currently shown slide */
@@ -35,8 +37,8 @@ static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer da
    poppler_page_get_size(page, &doc_w, &doc_h);
 
    /* scale for the rendering */
-   double scale_x = clutter_actor_get_width(canvas) / doc_w;
-   double scale_y = clutter_actor_get_height(canvas) / doc_h;
+   double scale_x = clutter_actor_get_width(CLUTTER_ACTOR(canvas)) / doc_w;
+   double scale_y = clutter_actor_get_height(CLUTTER_ACTOR(canvas)) / doc_h;
    cairo_scale(cr, scale_x, scale_y);
 
    /* render pdf */
@@ -56,29 +58,30 @@ static void init_slide_actors(char *filename, ClutterActor *stage)
    assert (slide_meta_data != NULL);
 
    for (int i=0; i<pc; ++i) {
-      ClutterActor *canvas = clutter_cairo_texture_new(SLIDE_X_RESOLUTION, SLIDE_Y_RESOLUTION);
+      ClutterCairoTexture *canvas = (ClutterCairoTexture*)
+         clutter_cairo_texture_new(SLIDE_X_RESOLUTION, SLIDE_Y_RESOLUTION);
       slide_info *info = &(slide_meta_data[i]);
       info->index = i;
       PopplerPage *page = poppler_document_get_page(document, i);
       assert (page != NULL);
       info->pdf = page;
-      info->actor = canvas;
+      info->actor = CLUTTER_ACTOR(canvas);
 
       g_signal_connect (canvas, "draw", G_CALLBACK (draw_slide), info);
 
       if (i == current_slide_index)
-         clutter_actor_show(canvas);
+         clutter_actor_show(CLUTTER_ACTOR(canvas));
       else
-         clutter_actor_hide(canvas);
+         clutter_actor_hide(CLUTTER_ACTOR(canvas));
 
-      clutter_container_add_actor (CLUTTER_CONTAINER (stage), canvas);
+      clutter_container_add_actor (CLUTTER_CONTAINER(stage), CLUTTER_ACTOR(canvas));
 
       /* bind the size of the canvas to that of the stage */
-      clutter_actor_add_constraint (canvas, clutter_bind_constraint_new (stage, CLUTTER_BIND_SIZE, 0));
+      clutter_actor_add_constraint(CLUTTER_ACTOR(canvas),
+         clutter_bind_constraint_new(stage, CLUTTER_BIND_SIZE, 0));
 
       /* invalidate to trigger drawing */
       clutter_cairo_texture_invalidate(canvas);
-      printf("added page %d\n", i);
    }
 }
 
@@ -107,7 +110,6 @@ static void previous_slide(void)
 static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
 {
    ClutterKeyEvent *event = (ClutterKeyEvent*) ev;
-   printf("key press %d (%d %d)\n", event->keyval, event->hardware_keycode, event->unicode_value);
    switch (event->keyval) {
       case 65363: /* RIGHT */
       case ' ':
@@ -125,6 +127,7 @@ static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
          clutter_stage_set_fullscreen(show_stage, !clutter_stage_get_fullscreen(show_stage));
          break;
       default: /* ignore */
+         printf("key press %d (%d %d)\n", event->keyval, event->hardware_keycode, event->unicode_value);
          break;
    }
 }
@@ -140,7 +143,7 @@ int main(int argc, char** argv)
    realpath(argv[1], filename+7);
 
    g_type_init();
-   if (clutter_init (&argc, &argv) != CLUTTER_INIT_SUCCESS)
+   if (clutter_init(&argc, &argv) != CLUTTER_INIT_SUCCESS)
        return 1;
 
    ClutterActor    *stage = clutter_stage_get_default ();
