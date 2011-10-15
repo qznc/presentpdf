@@ -15,6 +15,9 @@ static unsigned slide_count;
 /** currently shown slide */
 static unsigned current_slide_index;
 
+static const unsigned SLIDE_X_RESOLUTION = 1024;
+static const unsigned SLIDE_Y_RESOLUTION = 768;
+
 typedef struct slide_info {
    unsigned index;
    PopplerPage *pdf;
@@ -26,11 +29,19 @@ static slide_info *slide_meta_data;
 static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer data)
 {
    slide_info *info = (slide_info*) data;
-   printf("render page %d on %x\n", info->index, cr);
    PopplerPage *page = info->pdf;
    assert (page != NULL);
+   double doc_w, doc_h;
+   poppler_page_get_size(page, &doc_w, &doc_h);
+
+   /* scale for the rendering */
+   double scale_x = clutter_actor_get_width(canvas) / doc_w;
+   double scale_y = clutter_actor_get_height(canvas) / doc_h;
+   cairo_scale(cr, scale_x, scale_y);
+
+   /* render pdf */
    poppler_page_render(page, cr);
-   printf("rendered\n");
+
    return true;
 }
 
@@ -44,9 +55,8 @@ static void init_slide_actors(char *filename, ClutterActor *stage)
    assert (slide_meta_data != NULL);
 
    for (int i=0; i<pc; ++i) {
-      ClutterActor *canvas = clutter_cairo_texture_new(640, 480);
+      ClutterActor *canvas = clutter_cairo_texture_new(SLIDE_X_RESOLUTION, SLIDE_Y_RESOLUTION);
       slide_info *info = &(slide_meta_data[i]);
-      printf("%x[%d] = %x", slide_meta_data, i, info);
       info->index = i;
       PopplerPage *page = poppler_document_get_page(document, i);
       assert (page != NULL);
@@ -65,9 +75,8 @@ static void init_slide_actors(char *filename, ClutterActor *stage)
       /* bind the size of the canvas to that of the stage */
       clutter_actor_add_constraint (canvas, clutter_bind_constraint_new (stage, CLUTTER_BIND_SIZE, 0));
 
-      /* make sure to match allocation to canvas size */
-      clutter_cairo_texture_set_auto_resize (CLUTTER_CAIRO_TEXTURE (canvas), TRUE);
-
+      /* invalidate to trigger drawing */
+      clutter_cairo_texture_invalidate(canvas);
       printf("added page %d\n", i);
    }
 }
@@ -132,17 +141,12 @@ int main(int argc, char** argv)
    ClutterColor     stage_color = { 0x0, 0x0, 0x0, 0xff };
    clutter_stage_set_color (CLUTTER_STAGE (stage), &stage_color);
    clutter_stage_set_user_resizable (CLUTTER_STAGE (stage), TRUE);
+   clutter_actor_set_size(stage, 640, 480);
    show_stage = stage;
 
    init_slide_actors(filename, stage);
 
-   /* Create a timeline to manage animation */
-   ClutterTimeline *timeline = clutter_timeline_new (6000);
-   clutter_timeline_set_loop (timeline, TRUE);
-
    clutter_actor_show (stage);
-
-   clutter_timeline_start (timeline);
 
    g_signal_connect (stage, "key-press-event",
          G_CALLBACK (handle_key_input),
