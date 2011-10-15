@@ -9,7 +9,7 @@
 /** presenter stage shows the display for the talker */
 //static ClutterActor *presenter_stage;
 /** show stage is the display for the audience */
-//static ClutterActor *show_stage;
+static ClutterActor *show_stage;
 /** number of slides */
 static unsigned slide_count;
 /** currently shown slide */
@@ -111,6 +111,9 @@ static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
       case 'Q': /* exit */
          clutter_main_quit();
          break;
+      case 'f':
+         clutter_stage_set_fullscreen(show_stage, !clutter_stage_get_fullscreen(show_stage));
+         break;
       default: /* ignore */
          break;
    }
@@ -128,6 +131,8 @@ int main(int argc, char** argv)
    ClutterActor    *stage = clutter_stage_get_default ();
    ClutterColor     stage_color = { 0x0, 0x0, 0x0, 0xff };
    clutter_stage_set_color (CLUTTER_STAGE (stage), &stage_color);
+   clutter_stage_set_user_resizable (CLUTTER_STAGE (stage), TRUE);
+   show_stage = stage;
 
    init_slide_actors(filename, stage);
 
