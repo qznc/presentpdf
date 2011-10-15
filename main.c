@@ -7,9 +7,9 @@
 #include <stdbool.h>
 
 /** presenter stage shows the display for the talker */
-static ClutterActor *presenter_stage;
+//static ClutterActor *presenter_stage;
 /** show stage is the display for the audience */
-static ClutterActor *show_stage;
+//static ClutterActor *show_stage;
 /** number of slides */
 static unsigned slide_count;
 /** currently shown slide */
@@ -18,6 +18,7 @@ static unsigned current_slide_index;
 typedef struct slide_info {
    unsigned index;
    PopplerPage *pdf;
+   ClutterActor *actor;
 } slide_info;
 /** internal info for each slide */
 static slide_info *slide_meta_data;
@@ -25,8 +26,11 @@ static slide_info *slide_meta_data;
 static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer data)
 {
    slide_info *info = (slide_info*) data;
+   printf("render page %d on %x\n", info->index, cr);
    PopplerPage *page = info->pdf;
+   assert (page != NULL);
    poppler_page_render(page, cr);
+   printf("rendered\n");
    return true;
 }
 
@@ -39,12 +43,15 @@ static void init_slide_actors(char *filename, ClutterActor *stage)
    slide_meta_data = (slide_info*) malloc(sizeof(slide_info) * pc);
    assert (slide_meta_data != NULL);
 
-   /* initialize surfaces */
    for (int i=0; i<pc; ++i) {
       ClutterActor *canvas = clutter_cairo_texture_new(640, 480);
       slide_info *info = &(slide_meta_data[i]);
-      info[i].index = i;
-      info[i].pdf =  poppler_document_get_page(document, i);
+      printf("%x[%d] = %x", slide_meta_data, i, info);
+      info->index = i;
+      PopplerPage *page = poppler_document_get_page(document, i);
+      assert (page != NULL);
+      info->pdf = page;
+      info->actor = canvas;
 
       g_signal_connect (canvas, "draw", G_CALLBACK (draw_slide), info);
 
@@ -61,9 +68,51 @@ static void init_slide_actors(char *filename, ClutterActor *stage)
       /* make sure to match allocation to canvas size */
       clutter_cairo_texture_set_auto_resize (CLUTTER_CAIRO_TEXTURE (canvas), TRUE);
 
-      /* invalidate the canvas, so that we can draw before the main loop starts */
-      clutter_cairo_texture_invalidate (CLUTTER_CAIRO_TEXTURE (canvas));
-      printf("added slide %d\n", i);
+      printf("added page %d\n", i);
+   }
+}
+
+static void next_slide(void)
+{
+   if (current_slide_index+1 == slide_count)
+      return;
+   ClutterActor *current = slide_meta_data[current_slide_index].actor;
+   current_slide_index += 1;
+   ClutterActor *next = slide_meta_data[current_slide_index].actor;
+   clutter_actor_show(next);
+   clutter_actor_hide(current);
+}
+
+static void previous_slide(void)
+{
+   if (current_slide_index == 0)
+      return;
+   ClutterActor *current = slide_meta_data[current_slide_index].actor;
+   current_slide_index -= 1;
+   ClutterActor *next = slide_meta_data[current_slide_index].actor;
+   clutter_actor_show(next);
+   clutter_actor_hide(current);
+}
+
+static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
+{
+   ClutterKeyEvent *event = (ClutterKeyEvent*) ev;
+   printf("key event %d %d %d\n", event->keyval, event->hardware_keycode, event->unicode_value);
+   switch (event->keyval) {
+      case 65363: /* RIGHT */
+      case ' ':
+         next_slide();
+         break;
+      case 65361: /* LEFT */
+      case 65288: /* BACKSPACE */
+         previous_slide();
+         break;
+      case 'q':
+      case 'Q': /* exit */
+         clutter_main_quit();
+         break;
+      default: /* ignore */
+         break;
    }
 }
 
@@ -91,9 +140,10 @@ int main(int argc, char** argv)
    clutter_timeline_start (timeline);
 
    g_signal_connect (stage, "key-press-event",
-         G_CALLBACK (clutter_main_quit),
+         G_CALLBACK (handle_key_input),
          NULL);
 
+   printf("GO!\n");
    clutter_main();
 
    return 0;
