@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <math.h>
+#include <time.h>
 
 #include <cairo.h>
 #include <poppler.h>
@@ -231,16 +232,25 @@ void create_presenter_stage()
          NULL);
 }
 
-void create_onscreen_clock()
+static void update_time()
+{
+   time_t t = time(NULL);
+   struct tm *tmp = localtime(&t);
+   char time_string[20];
+   strftime(time_string, 20, "%H:%M:%S", tmp);
+   clutter_text_set_text(CLUTTER_TEXT(onscreen_clock), time_string);
+}
+
+static void create_onscreen_clock()
 {
    ClutterColor text_color = { 0xff, 0xff, 0xcc, 0xff };
    onscreen_clock = clutter_text_new();
-   clutter_text_set_text(CLUTTER_TEXT(onscreen_clock), "Hello World");
    clutter_text_set_font_name(CLUTTER_TEXT(onscreen_clock), "Sans 24px");
    clutter_text_set_color(CLUTTER_TEXT(onscreen_clock), &text_color);
    clutter_actor_set_position (onscreen_clock, 5, 300);
    clutter_container_add_actor(CLUTTER_CONTAINER(presenter_stage), onscreen_clock);
    clutter_actor_show (onscreen_clock);
+   update_time();
 }
 
 int main(int argc, char** argv)
@@ -264,6 +274,11 @@ int main(int argc, char** argv)
    init_slide_actors(filename);
    create_onscreen_clock();
    place_slides();
+
+   ClutterTimeline *timeline = clutter_timeline_new(1000);
+   g_signal_connect(timeline, "new-frame", G_CALLBACK(update_time), NULL);
+   clutter_timeline_set_loop(timeline, TRUE);
+   clutter_timeline_start(timeline);
 
    printf("GO!\n");
    clutter_main();
