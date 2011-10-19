@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 
 #include <cairo.h>
 #include <poppler.h>
@@ -18,7 +19,9 @@ static unsigned slide_count;
 /** currently shown slide */
 static unsigned current_slide_index;
 /** count down timer */
-static ClutterActor *onscreen_clock;
+static ClutterText *onscreen_clock;
+/** presentation notes */
+static ClutterText *notes;
 
 static const unsigned SLIDE_X_RESOLUTION = 1024;
 static const unsigned SLIDE_Y_RESOLUTION = 768;
@@ -153,6 +156,32 @@ static void place_slides(void)
       clutter_actor_show(next);
    }
 
+   /* update notes */
+   const int MAX_LEN = 1000;
+   char notes_text[MAX_LEN];
+   notes_text[0] = 0;
+   unsigned len = 0;
+   PopplerPage *page = slide_meta_data[current_slide_index].pdf;
+   GList *l = poppler_page_get_annot_mapping(page);
+   for (; l; l = l->next) {
+      PopplerAnnotMapping *mapping = (PopplerAnnotMapping *)l->data;
+      PopplerAnnot *annot = mapping->annot;
+      PopplerAnnotType type = poppler_annot_get_annot_type(annot);
+      switch (type) {
+         case POPPLER_ANNOT_TEXT: {
+            gchar *text = poppler_annot_get_contents(annot);
+            strncat(notes_text, text, MAX_LEN-len);
+            len = strlen(notes_text);
+            break;
+            }
+         case POPPLER_ANNOT_LINK:
+            break; /* ignore this type */
+         default:
+            printf("unknown annotation type %d\n", type);
+            break;
+      }
+   }
+   clutter_text_set_text(CLUTTER_TEXT(notes), notes_text);
 }
 
 static void next_slide(void)
@@ -244,13 +273,25 @@ static void update_time()
 static void create_onscreen_clock()
 {
    ClutterColor text_color = { 0xff, 0xff, 0xcc, 0xff };
-   onscreen_clock = clutter_text_new();
-   clutter_text_set_font_name(CLUTTER_TEXT(onscreen_clock), "Sans 24px");
+   onscreen_clock = CLUTTER_TEXT(clutter_text_new());
+   clutter_text_set_font_name(CLUTTER_TEXT(onscreen_clock), "Mono 24px");
    clutter_text_set_color(CLUTTER_TEXT(onscreen_clock), &text_color);
-   clutter_actor_set_position (onscreen_clock, 5, 300);
-   clutter_container_add_actor(CLUTTER_CONTAINER(presenter_stage), onscreen_clock);
-   clutter_actor_show (onscreen_clock);
+   clutter_actor_set_position (CLUTTER_ACTOR(onscreen_clock), 5, 300);
+   clutter_container_add_actor(CLUTTER_CONTAINER(presenter_stage), CLUTTER_ACTOR(onscreen_clock));
+   clutter_actor_show (CLUTTER_ACTOR(onscreen_clock));
    update_time();
+}
+
+static void create_notes_actor()
+{
+   ClutterColor text_color = { 0xff, 0xff, 0xcc, 0xff };
+   notes = CLUTTER_TEXT(clutter_text_new());
+   clutter_text_set_font_name(CLUTTER_TEXT(notes), "Sans 24px");
+   clutter_text_set_color(CLUTTER_TEXT(notes), &text_color);
+   clutter_text_set_text(CLUTTER_TEXT(notes), "");
+   clutter_actor_set_position (CLUTTER_ACTOR(notes), 200, 300);
+   clutter_container_add_actor(CLUTTER_CONTAINER(presenter_stage), CLUTTER_ACTOR(notes));
+   clutter_actor_show (CLUTTER_ACTOR(notes));
 }
 
 int main(int argc, char** argv)
@@ -273,6 +314,7 @@ int main(int argc, char** argv)
    create_presenter_stage();
    init_slide_actors(filename);
    create_onscreen_clock();
+   create_notes_actor();
    place_slides();
 
    ClutterTimeline *timeline = clutter_timeline_new(1000);
