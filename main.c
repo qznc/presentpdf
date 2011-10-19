@@ -22,9 +22,13 @@ static unsigned current_slide_index;
 static ClutterText *onscreen_clock;
 /** presentation notes */
 static ClutterText *notes;
+/** crossfading between show slides */
+static ClutterTimeline *crossfading;
 
 static const unsigned SLIDE_X_RESOLUTION = 1024;
 static const unsigned SLIDE_Y_RESOLUTION = 768;
+static const unsigned CROSSFADE_MSEC = 200;
+static const unsigned FPS = 60;
 
 typedef struct slide_info {
    unsigned index;
@@ -122,7 +126,6 @@ static void place_slides(void)
       ClutterActor *a = slide_meta_data[i].actor;
       clutter_actor_hide(a);
       ClutterActor *show = slide_meta_data[i].show_actor;
-      clutter_actor_hide(show);
    }
    const float stage_width = clutter_actor_get_width(CLUTTER_ACTOR(presenter_stage));
 
@@ -138,7 +141,10 @@ static void place_slides(void)
    /* show current show slide */
    ClutterActor *current_show = slide_meta_data[current_slide_index].show_actor;
    clutter_actor_show(current_show);
-
+   clutter_actor_set_opacity(current_show, 0);
+   clutter_actor_raise_top(current_show);
+   clutter_timeline_rewind(crossfading);
+   clutter_timeline_start(crossfading);
 
    /* show previous slide */
    if (current_slide_index > 0) {
@@ -229,7 +235,26 @@ static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
    }
 }
 
-void create_show_stage()
+static int min(int x, int y) {
+   if (x < y) return x;
+   return y;
+}
+
+static void update_crossfade(void)
+{
+   const unsigned OPACITY_CHANGE = 1 + (FPS * 255 / CROSSFADE_MSEC);
+   for (int i=0; i<slide_count; ++i) {
+      ClutterActor *s = slide_meta_data[i].show_actor;
+      guint8 opacity = clutter_actor_get_opacity(s);
+      if (i == current_slide_index) {
+         guint8 diff = 255-opacity;
+         opacity += min(OPACITY_CHANGE, diff);
+      }
+      clutter_actor_set_opacity(s, opacity);
+   }
+}
+
+void create_show_stage(void)
 {
    show_stage = CLUTTER_STAGE(clutter_stage_new());
 
@@ -243,6 +268,10 @@ void create_show_stage()
    g_signal_connect (show_stage, "key-press-event",
          G_CALLBACK (handle_key_input),
          NULL);
+
+   crossfading = clutter_timeline_new(3*CROSSFADE_MSEC);
+   clutter_timeline_set_delay(crossfading, 1000 / FPS);
+   g_signal_connect(crossfading, "new-frame", G_CALLBACK(update_crossfade), NULL);
 }
 
 void create_presenter_stage()
