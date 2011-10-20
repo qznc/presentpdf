@@ -1,4 +1,4 @@
-NAME=pdfpresenter
+NAME=presentpdf
 
 CFLAGS=-Wall -pedantic -g -std=c99
 LDFLAGS=-lm
