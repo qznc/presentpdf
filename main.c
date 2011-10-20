@@ -59,10 +59,16 @@ static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer da
 
 static gboolean draw_presenter_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer data)
 {
-   (void)canvas;
    slide_info *info = (slide_info*) data;
    PopplerPage *page = info->pdf;
    assert (page != NULL);
+   double doc_w, doc_h;
+   poppler_page_get_size(page, &doc_w, &doc_h);
+
+   /* scale for the rendering */
+   double scale_x = clutter_actor_get_width(CLUTTER_ACTOR(canvas)) / doc_w;
+   double scale_y = clutter_actor_get_height(CLUTTER_ACTOR(canvas)) / doc_h;
+   cairo_scale(cr, scale_x, scale_y);
 
    /* render pdf */
    poppler_page_render(page, cr);
@@ -120,7 +126,7 @@ static void init_slide_actors(const char *filename)
 
 static void place_slides(void)
 {
-   const float rotation = -30;
+   const float rotation = -25;
 
    /* hide all */
    for (unsigned i=0; i<slide_count; ++i) {
@@ -149,7 +155,7 @@ static void place_slides(void)
    /* show previous slide */
    if (current_slide_index > 0) {
       ClutterActor *previous = slide_meta_data[current_slide_index-1].actor;
-      clutter_actor_set_position(previous, x-slide_width, 0);
+      clutter_actor_set_position(previous, x-slide_width-1, 0);
       clutter_actor_set_rotation(previous, CLUTTER_Y_AXIS, rotation, slide_width, 0, 0);
       clutter_actor_show(previous);
    }
@@ -157,7 +163,7 @@ static void place_slides(void)
    /* show next slide */
    if (current_slide_index+1 < slide_count) {
       ClutterActor *next = slide_meta_data[current_slide_index+1].actor;
-      clutter_actor_set_position(next, x+slide_width, 0);
+      clutter_actor_set_position(next, x+slide_width+1, 0);
       clutter_actor_set_rotation(next, CLUTTER_Y_AXIS, -rotation, 0, 0, 0);
       clutter_actor_show(next);
    }
