@@ -59,6 +59,7 @@ static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer da
 
 static gboolean draw_presenter_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer data)
 {
+   (void)canvas;
    slide_info *info = (slide_info*) data;
    PopplerPage *page = info->pdf;
    assert (page != NULL);
@@ -71,13 +72,13 @@ static gboolean draw_presenter_slide(ClutterCairoTexture *canvas, cairo_t *cr, g
 static void init_slide_actors(const char *filename)
 {
    PopplerDocument *document = poppler_document_new_from_file(filename, NULL, NULL);
-   const int pc = poppler_document_get_n_pages(document);
+   const unsigned pc = (unsigned) poppler_document_get_n_pages(document);
    slide_count = pc;
    current_slide_index = 0;
    slide_meta_data = (slide_info*) malloc(sizeof(slide_info) * pc);
    assert (slide_meta_data != NULL);
 
-   for (int i=0; i<pc; ++i) {
+   for (unsigned i=0; i<pc; ++i) {
       ClutterCairoTexture *show_canvas = (ClutterCairoTexture*)
          clutter_cairo_texture_new(SLIDE_X_RESOLUTION, SLIDE_Y_RESOLUTION);
       ClutterCairoTexture *presenter_canvas = (ClutterCairoTexture*)
@@ -122,10 +123,9 @@ static void place_slides(void)
    const float rotation = -30;
 
    /* hide all */
-   for (int i=0; i<slide_count; ++i) {
+   for (unsigned i=0; i<slide_count; ++i) {
       ClutterActor *a = slide_meta_data[i].actor;
       clutter_actor_hide(a);
-      ClutterActor *show = slide_meta_data[i].show_actor;
    }
    const float stage_width = clutter_actor_get_width(CLUTTER_ACTOR(presenter_stage));
 
@@ -208,6 +208,7 @@ static void previous_slide(void)
 
 static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
 {
+   (void)canvas;
    ClutterKeyEvent *event = (ClutterKeyEvent*) ev;
    switch (event->keyval) {
       case 65363: /* RIGHT */
@@ -243,7 +244,7 @@ static int min(int x, int y) {
 static void update_crossfade(void)
 {
    const unsigned OPACITY_CHANGE = 1 + (FPS * 255 / CROSSFADE_MSEC);
-   for (int i=0; i<slide_count; ++i) {
+   for (unsigned i=0; i<slide_count; ++i) {
       ClutterActor *s = slide_meta_data[i].show_actor;
       guint8 opacity = clutter_actor_get_opacity(s);
       if (i == current_slide_index) {
@@ -254,7 +255,7 @@ static void update_crossfade(void)
    }
 }
 
-void create_show_stage(void)
+static void create_show_stage(void)
 {
    show_stage = CLUTTER_STAGE(clutter_stage_new());
 
@@ -274,7 +275,7 @@ void create_show_stage(void)
    g_signal_connect(crossfading, "new-frame", G_CALLBACK(update_crossfade), NULL);
 }
 
-void create_presenter_stage()
+static void create_presenter_stage(void)
 {
    presenter_stage = CLUTTER_STAGE(clutter_stage_new());
 
@@ -290,7 +291,7 @@ void create_presenter_stage()
          NULL);
 }
 
-static void update_time()
+static void update_time(void)
 {
    time_t t = time(NULL);
    struct tm *tmp = localtime(&t);
@@ -299,7 +300,7 @@ static void update_time()
    clutter_text_set_text(CLUTTER_TEXT(onscreen_clock), time_string);
 }
 
-static void create_onscreen_clock()
+static void create_onscreen_clock(void)
 {
    ClutterColor text_color = { 0xff, 0xff, 0xcc, 0xff };
    onscreen_clock = CLUTTER_TEXT(clutter_text_new());
@@ -311,7 +312,7 @@ static void create_onscreen_clock()
    update_time();
 }
 
-static void create_notes_actor()
+static void create_notes_actor(void)
 {
    ClutterColor text_color = { 0xff, 0xff, 0xcc, 0xff };
    notes = CLUTTER_TEXT(clutter_text_new());
