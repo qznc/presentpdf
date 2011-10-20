@@ -8,7 +8,7 @@ One for the audience and one for the presenter.
 
 Just use <code>make</code>.
 
-It requires the poppler, clutter and cairo libraries.
+It requires the poppler, clutter 1.8 and cairo libraries.
 
 # Licence (BSD 2-clause)
 
