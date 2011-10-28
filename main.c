@@ -216,6 +216,14 @@ static void previous_slide(void)
    place_slides();
 }
 
+static void to_slide(unsigned index)
+{
+   if (index >= slide_count)
+      index = slide_count-1;
+   current_slide_index = index;
+   place_slides();
+}
+
 static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
 {
    (void)canvas;
@@ -235,6 +243,12 @@ static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
       case 'q':
       case 'Q': /* exit */
          clutter_main_quit();
+         break;
+      case 65360: /* Pos1 */
+         to_slide(0);
+         break;
+      case 65367: /* End */
+         to_slide(slide_count-1);
          break;
       case 'f':
          clutter_stage_set_fullscreen(show_stage, !clutter_stage_get_fullscreen(show_stage));
