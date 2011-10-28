@@ -260,6 +260,23 @@ static void handle_key_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
    }
 }
 
+static void handle_button_input(ClutterCairoTexture *canvas, ClutterEvent *ev)
+{
+   (void)canvas;
+   ClutterButtonEvent *event = (ClutterButtonEvent*) ev;
+   switch (event->button) {
+      case 1: /* left click */
+         next_slide();
+         break;
+      case 3: /* right click */
+         previous_slide();
+         break;
+      default: /* ignore */
+         printf("button press %d\n", event->button);
+         break;
+   }
+}
+
 static int min(int x, int y) {
    if (x < y) return x;
    return y;
@@ -292,6 +309,9 @@ static void create_show_stage(void)
 
    g_signal_connect (show_stage, "key-press-event",
          G_CALLBACK (handle_key_input),
+         NULL);
+   g_signal_connect (show_stage, "button-press-event",
+         G_CALLBACK (handle_button_input),
          NULL);
 
    crossfading = clutter_timeline_new(3*CROSSFADE_MSEC);
