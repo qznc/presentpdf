@@ -10,7 +10,7 @@
 #include <poppler.h>
 #include <clutter/clutter.h>
 
-#if CLUTTER_MAJOR_VERSION != 1 || CLUTTER_MINOR_VERSION != 8
+#if CLUTTER_MAJOR_VERSION != 1 || CLUTTER_MINOR_VERSION < 8
 #error Wrong clutter version!
 #endif
 
