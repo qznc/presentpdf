@@ -61,24 +61,6 @@ static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer da
    return true;
 }
 
-static gboolean draw_presenter_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer data)
-{
-   slide_info *info = (slide_info*) data;
-   PopplerPage *page = info->pdf;
-   assert (page != NULL);
-   double doc_w, doc_h;
-   poppler_page_get_size(page, &doc_w, &doc_h);
-
-   /* scale for the rendering */
-   double scale_x = clutter_actor_get_width(CLUTTER_ACTOR(canvas)) / doc_w;
-   double scale_y = clutter_actor_get_height(CLUTTER_ACTOR(canvas)) / doc_h;
-   cairo_scale(cr, scale_x, scale_y);
-
-   /* render pdf */
-   poppler_page_render(page, cr);
-   return true;
-}
-
 static void init_slide_actors(const char *filename)
 {
    PopplerDocument *document = poppler_document_new_from_file(filename, NULL, NULL);
@@ -105,7 +87,7 @@ static void init_slide_actors(const char *filename)
          printf("added slide %d to presenter stage\n", i);
 
       g_signal_connect (show_canvas, "draw", G_CALLBACK (draw_slide), info);
-      g_signal_connect (presenter_canvas, "draw", G_CALLBACK (draw_presenter_slide), info);
+      g_signal_connect (presenter_canvas, "draw", G_CALLBACK (draw_slide), info);
 
       if (i == current_slide_index) {
          clutter_actor_show(CLUTTER_ACTOR(show_canvas));
