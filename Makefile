@@ -11,3 +11,8 @@ all: $(NAME)
 
 $(NAME): main.c
 	$(CC) -o $(NAME) $(CFLAGS) main.c $(LDFLAGS)
+
+.PHONY: clean
+
+clean:
+	rm -f $(NAME)
