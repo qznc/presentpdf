@@ -28,6 +28,8 @@ static unsigned slide_count;
 static unsigned current_slide_index;
 /** count down timer */
 static ClutterText *onscreen_clock;
+/** count down timer */
+static time_t timer_start;
 /** crossfading between show slides */
 static ClutterTimeline *crossfading;
 
@@ -210,6 +212,8 @@ static void next_slide(void)
 {
 	if (current_slide_index+1 == slide_count)
 		return;
+	if (current_slide_index == 0)
+		timer_start = time(NULL);
 	current_slide_index += 1;
 	place_slides();
 }
@@ -344,10 +348,18 @@ static void create_presenter_stage(void)
 
 static void update_time(void)
 {
-	time_t t = time(NULL);
-	struct tm *tmp = localtime(&t);
 	char time_string[20];
-	strftime(time_string, 20, "%H:%M:%S", tmp);
+	if (current_slide_index == 0) {
+		time_t t = time(NULL);
+		struct tm *tmp = localtime(&t);
+		strftime(time_string, 20, "%H:%M:%S", tmp);
+	} else {
+		time_t passed = time(NULL) - timer_start;
+		unsigned seconds = (unsigned) passed; // TODO hacky
+		unsigned minutes = seconds / 60;
+		unsigned hours = minutes / 60;
+		snprintf(time_string, 20, "%02d:%02d:%02d", hours, minutes%60, seconds%60);
+	}
 	clutter_text_set_text(CLUTTER_TEXT(onscreen_clock), time_string);
 }
 
@@ -355,7 +367,7 @@ static void create_onscreen_clock(void)
 {
 	ClutterColor text_color = { 0xff, 0xff, 0xcc, 0xff };
 	onscreen_clock = CLUTTER_TEXT(clutter_text_new());
-	clutter_text_set_font_name(CLUTTER_TEXT(onscreen_clock), "Mono 24px");
+	clutter_text_set_font_name(CLUTTER_TEXT(onscreen_clock), "Mono 48px");
 	clutter_text_set_color(CLUTTER_TEXT(onscreen_clock), &text_color);
 	clutter_actor_set_position (CLUTTER_ACTOR(onscreen_clock), 5, 300);
 	clutter_container_add_actor(CLUTTER_CONTAINER(presenter_stage), CLUTTER_ACTOR(onscreen_clock));
