@@ -14,6 +14,8 @@
 #error Wrong clutter version!
 #endif
 
+#define IMAGE_DPI 150
+
 /** presenter stage shows the display for the talker */
 static ClutterStage *presenter_stage;
 /** show stage is the display for the audience */
@@ -24,8 +26,6 @@ static unsigned slide_count;
 static unsigned current_slide_index;
 /** count down timer */
 static ClutterText *onscreen_clock;
-/** presentation notes */
-static ClutterText *notes;
 /** crossfading between show slides */
 static ClutterTimeline *crossfading;
 
@@ -36,7 +36,7 @@ static const unsigned FPS = 60;
 
 typedef struct slide_info {
 	unsigned index;
-	PopplerPage *pdf;
+	cairo_surface_t *src_surface;
 	ClutterActor *actor;
 	ClutterActor *show_actor;
 } slide_info;
@@ -46,67 +46,112 @@ static slide_info *slide_meta_data;
 static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer data)
 {
 	slide_info *info = (slide_info*) data;
-	PopplerPage *page = info->pdf;
-	assert (page != NULL);
-	double doc_w, doc_h;
-	poppler_page_get_size(page, &doc_w, &doc_h);
+	cairo_surface_t *surface = info->src_surface;
+	const int width  = cairo_image_surface_get_width (surface);
+	const int height = cairo_image_surface_get_height (surface);
 
 	/* scale for the rendering */
-	double scale_x = clutter_actor_get_width(CLUTTER_ACTOR(canvas)) / doc_w;
-	double scale_y = clutter_actor_get_height(CLUTTER_ACTOR(canvas)) / doc_h;
+	double scale_x = clutter_actor_get_width(CLUTTER_ACTOR(canvas)) / width;
+	double scale_y = clutter_actor_get_height(CLUTTER_ACTOR(canvas)) / height;
 	cairo_scale(cr, scale_x, scale_y);
 
-	/* render pdf */
-	poppler_page_render(page, cr);
+	/* render */
+	cairo_set_source_surface (cr, surface, 0, 0);
+	cairo_paint (cr);
+
 	return true;
 }
 
-static void init_slide_actors(const char *filename)
+static void read_pdf(char *filename)
 {
 	PopplerDocument *document = poppler_document_new_from_file(filename, NULL, NULL);
-	const unsigned pc = (unsigned) poppler_document_get_n_pages(document);
-	slide_count = pc;
-	current_slide_index = 0;
-	slide_meta_data = (slide_info*) malloc(sizeof(slide_info) * pc);
-	assert (slide_meta_data != NULL);
+	const unsigned count = (unsigned) poppler_document_get_n_pages(document);
+	slide_meta_data = malloc(sizeof(slide_info) * count);
+	slide_count = count;
 
-	for (unsigned i=0; i<pc; ++i) {
-		ClutterCairoTexture *show_canvas = (ClutterCairoTexture*)
-			clutter_cairo_texture_new(SLIDE_X_RESOLUTION, SLIDE_Y_RESOLUTION);
-		ClutterCairoTexture *presenter_canvas = (ClutterCairoTexture*)
-			clutter_cairo_texture_new(400, 300);
+	/* render slides */
+	for (unsigned i=0; i<count; ++i) {
 		slide_info *info = &(slide_meta_data[i]);
-		info->index = i;
-		PopplerPage *page = poppler_document_get_page(document, i);
-		assert (page != NULL);
-		info->pdf = page;
+		info->src_surface = NULL;
+		PopplerPage *page = poppler_document_get_page (document, i);
+		double width, height;
+		poppler_page_get_size (page, &width, &height);
 
-		info->show_actor = CLUTTER_ACTOR(show_canvas);
-		printf("added slide %d to show stage\n", i);
-		info->actor = CLUTTER_ACTOR(presenter_canvas);
-		printf("added slide %d to presenter stage\n", i);
+		/* For correct rendering of PDF, the PDF is first rendered to a
+		 * transparent image (all alpha = 0). */
+		cairo_surface_t *surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,
+				IMAGE_DPI*width/72.0,
+				IMAGE_DPI*height/72.0);
+		cairo_t *cr = cairo_create (surface);
+		cairo_scale (cr, IMAGE_DPI/72.0, IMAGE_DPI/72.0);
+		cairo_save (cr);
+		poppler_page_render (page, cr);
+		cairo_restore (cr);
 
-		g_signal_connect (show_canvas, "draw", G_CALLBACK (draw_slide), info);
-		g_signal_connect (presenter_canvas, "draw", G_CALLBACK (draw_slide), info);
+		/* Then the image is painted on top of a white "page". Instead of
+		 * creating a second image, painting it white, then painting the
+		 * PDF image over it we can use the CAIRO_OPERATOR_DEST_OVER
+		 * operator to achieve the same effect with the one image. */
+		cairo_set_operator (cr, CAIRO_OPERATOR_DEST_OVER);
+		cairo_set_source_rgb (cr, 1, 1, 1);
+		cairo_paint (cr);
 
-		if (i == current_slide_index) {
-			clutter_actor_show(CLUTTER_ACTOR(show_canvas));
-			clutter_actor_show(CLUTTER_ACTOR(presenter_canvas));
-		} else {
-			clutter_actor_hide(CLUTTER_ACTOR(show_canvas));
-			clutter_actor_hide(CLUTTER_ACTOR(presenter_canvas));
-		}
+		cairo_status_t status = cairo_status(cr);
+		if (status)
+			printf("%s\n", cairo_status_to_string (status));
 
-		clutter_container_add_actor (CLUTTER_CONTAINER(show_stage), CLUTTER_ACTOR(show_canvas));
-		clutter_container_add_actor (CLUTTER_CONTAINER(presenter_stage), CLUTTER_ACTOR(presenter_canvas));
+		cairo_destroy (cr);
+		slide_meta_data[i].src_surface = surface;
+	}
+}
 
-		/* bind the size of the canvas to that of the stage */
-		clutter_actor_add_constraint(CLUTTER_ACTOR(show_canvas),
-				clutter_bind_constraint_new(CLUTTER_ACTOR(show_stage), CLUTTER_BIND_SIZE, 0));
+static void ensure_slide_actor(unsigned i)
+{
+	slide_info *info = &(slide_meta_data[i]);
+	if (info->actor != NULL) return;
 
-		/* invalidate to trigger drawing */
-		clutter_cairo_texture_invalidate(show_canvas);
-		clutter_cairo_texture_invalidate(presenter_canvas);
+	ClutterCairoTexture *show_canvas = (ClutterCairoTexture*)
+		clutter_cairo_texture_new(SLIDE_X_RESOLUTION, SLIDE_Y_RESOLUTION);
+	ClutterCairoTexture *presenter_canvas = (ClutterCairoTexture*)
+		clutter_cairo_texture_new(400, 300);
+	info->index = i;
+
+	info->show_actor = CLUTTER_ACTOR(show_canvas);
+	//printf("added slide %d to show stage\n", i);
+	info->actor = CLUTTER_ACTOR(presenter_canvas);
+	//printf("added slide %d to presenter stage\n", i);
+
+	g_signal_connect (show_canvas, "draw", G_CALLBACK (draw_slide), info);
+	g_signal_connect (presenter_canvas, "draw", G_CALLBACK (draw_slide), info);
+
+	if (i == current_slide_index) {
+		clutter_actor_show(CLUTTER_ACTOR(show_canvas));
+		clutter_actor_show(CLUTTER_ACTOR(presenter_canvas));
+	} else {
+		clutter_actor_hide(CLUTTER_ACTOR(show_canvas));
+		clutter_actor_hide(CLUTTER_ACTOR(presenter_canvas));
+	}
+
+	clutter_container_add_actor (CLUTTER_CONTAINER(show_stage), CLUTTER_ACTOR(show_canvas));
+	clutter_container_add_actor (CLUTTER_CONTAINER(presenter_stage), CLUTTER_ACTOR(presenter_canvas));
+
+	/* bind the size of the canvas to that of the stage */
+	clutter_actor_add_constraint(CLUTTER_ACTOR(show_canvas),
+			clutter_bind_constraint_new(CLUTTER_ACTOR(show_stage), CLUTTER_BIND_SIZE, 0));
+
+	/* trigger draw */
+	clutter_cairo_texture_invalidate(CLUTTER_CAIRO_TEXTURE(show_canvas));
+	clutter_cairo_texture_invalidate(CLUTTER_CAIRO_TEXTURE(presenter_canvas));
+}
+
+static void init_slide_actors(void)
+{
+	const unsigned count = slide_count;
+
+	for (unsigned i=0; i<count; ++i) {
+		slide_info *info = &(slide_meta_data[i]);
+		info->actor = NULL;
+		info->show_actor = NULL;
 	}
 }
 
@@ -117,9 +162,11 @@ static void place_slides(void)
 	/* hide all */
 	for (unsigned i=0; i<slide_count; ++i) {
 		ClutterActor *a = slide_meta_data[i].actor;
-		clutter_actor_hide(a);
+		if (NULL != a)
+			clutter_actor_hide(a);
 	}
 	const float stage_width = clutter_actor_get_width(CLUTTER_ACTOR(presenter_stage));
+	ensure_slide_actor(current_slide_index);
 
 	/* show current slide */
 	ClutterActor *current = slide_meta_data[current_slide_index].actor;
@@ -140,6 +187,7 @@ static void place_slides(void)
 
 	/* show previous slide */
 	if (current_slide_index > 0) {
+		ensure_slide_actor(current_slide_index-1);
 		ClutterActor *previous = slide_meta_data[current_slide_index-1].actor;
 		clutter_actor_set_position(previous, x-slide_width-1, 0);
 		clutter_actor_set_rotation(previous, CLUTTER_Y_AXIS, rotation, slide_width, 0, 0);
@@ -148,38 +196,12 @@ static void place_slides(void)
 
 	/* show next slide */
 	if (current_slide_index+1 < slide_count) {
+		ensure_slide_actor(current_slide_index+1);
 		ClutterActor *next = slide_meta_data[current_slide_index+1].actor;
 		clutter_actor_set_position(next, x+slide_width+1, 0);
 		clutter_actor_set_rotation(next, CLUTTER_Y_AXIS, -rotation, 0, 0, 0);
 		clutter_actor_show(next);
 	}
-
-	/* update notes */
-	const int MAX_LEN = 1000;
-	char notes_text[MAX_LEN];
-	notes_text[0] = 0;
-	unsigned len = 0;
-	PopplerPage *page = slide_meta_data[current_slide_index].pdf;
-	GList *l = poppler_page_get_annot_mapping(page);
-	for (; l; l = l->next) {
-		PopplerAnnotMapping *mapping = (PopplerAnnotMapping *)l->data;
-		PopplerAnnot *annot = mapping->annot;
-		PopplerAnnotType type = poppler_annot_get_annot_type(annot);
-		switch (type) {
-			case POPPLER_ANNOT_TEXT: {
-				gchar *text = poppler_annot_get_contents(annot);
-				strncat(notes_text, text, MAX_LEN-len);
-				len = strlen(notes_text);
-				break;
-			}
-			case POPPLER_ANNOT_LINK:
-				break; /* ignore this type */
-			default:
-				printf("unknown annotation type %d\n", type);
-				break;
-		}
-	}
-	clutter_text_set_text(CLUTTER_TEXT(notes), notes_text);
 }
 
 static void next_slide(void)
@@ -269,6 +291,7 @@ static void update_crossfade(void)
 	const unsigned OPACITY_CHANGE = 1 + (FPS * 255 / CROSSFADE_MSEC);
 	for (unsigned i=0; i<slide_count; ++i) {
 		ClutterActor *s = slide_meta_data[i].show_actor;
+		if (NULL == s) continue;
 		guint8 opacity = clutter_actor_get_opacity(s);
 		if (i == current_slide_index) {
 			guint8 diff = 255-opacity;
@@ -338,18 +361,6 @@ static void create_onscreen_clock(void)
 	update_time();
 }
 
-static void create_notes_actor(void)
-{
-	ClutterColor text_color = { 0xff, 0xff, 0xcc, 0xff };
-	notes = CLUTTER_TEXT(clutter_text_new());
-	clutter_text_set_font_name(CLUTTER_TEXT(notes), "Sans 24px");
-	clutter_text_set_color(CLUTTER_TEXT(notes), &text_color);
-	clutter_text_set_text(CLUTTER_TEXT(notes), "");
-	clutter_actor_set_position (CLUTTER_ACTOR(notes), 200, 300);
-	clutter_container_add_actor(CLUTTER_CONTAINER(presenter_stage), CLUTTER_ACTOR(notes));
-	clutter_actor_show (CLUTTER_ACTOR(notes));
-}
-
 int main(int argc, char** argv)
 {
 	if (argc == 1) {
@@ -368,9 +379,9 @@ int main(int argc, char** argv)
 
 	create_show_stage();
 	create_presenter_stage();
-	init_slide_actors(filename);
+	read_pdf(filename);
+	init_slide_actors();
 	create_onscreen_clock();
-	create_notes_actor();
 	place_slides();
 
 	ClutterTimeline *timeline = clutter_timeline_new(1000);
