@@ -1,6 +1,6 @@
 NAME=presentpdf
 
-CFLAGS=-Wall -pedantic -g -std=c99
+CFLAGS=-Wall -Werror -pedantic -g -std=c99
 LDFLAGS=-lm
 
 LIBS=cairo poppler-glib clutter-1.0
