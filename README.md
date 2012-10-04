@@ -10,6 +10,11 @@ Just use <code>make</code>.
 
 It requires the poppler, clutter 1.8 and cairo libraries.
 
+# Bugs
+
+Fullscreen sometimes does not hide gnome panel sometimes.
+Workaround: try switching to another window and toggle fullscreen
+
 # Licence (BSD 2-clause)
 
 Copyright 2011 Andreas Zwinkau. All rights reserved.
