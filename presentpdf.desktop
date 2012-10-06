@@ -1,0 +1,15 @@
+[Desktop Entry]
+Encoding=UTF-8
+Version=1.0
+
+Name=PresentPDF
+Type=Application
+Exec=presentpdf
+
+GenericName=PDF Presenter
+Comment=Presentation tool for pdf files with extra overview window
+Comment[de]=Präsentations-Tool für PDF Dateien mit extra Übersichtsfenster
+NoDisplay=true
+MimeType=application/pdf;application/x-pdf
+Categories=Utility;Graphics;Presentation;Viewer;2DGraphics;
+Terminal=false
