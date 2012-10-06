@@ -12,8 +12,8 @@ It requires the poppler, clutter 1.8 and cairo libraries.
 
 # Bugs
 
-Fullscreen sometimes does not hide gnome panel sometimes.
-Workaround: try switching to another window and toggle fullscreen
+If the presenter console window has the focus,
+fullscreen of stage window does not hide the gnome-panel.
 
 # Licence (BSD 2-clause)
 
