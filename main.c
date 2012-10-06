@@ -7,6 +7,7 @@
 #include <math.h>
 #include <time.h>
 #include <string.h>
+#include <pthread.h>
 
 #include <cairo.h>
 #include <poppler.h>
@@ -51,6 +52,10 @@ static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer da
 {
 	slide_info *info = (slide_info*) data;
 	cairo_surface_t *surface = info->src_surface;
+	if (NULL == surface) {
+		printf("NULL surface");
+		return false;
+	}
 	const int width  = cairo_image_surface_get_width (surface);
 	const int height = cairo_image_surface_get_height (surface);
 
@@ -66,6 +71,51 @@ static gboolean draw_slide(ClutterCairoTexture *canvas, cairo_t *cr, gpointer da
 	return true;
 }
 
+static void render_slide(PopplerDocument *document, const unsigned pageno)
+{
+	PopplerPage *page = poppler_document_get_page (document, pageno);
+	double width, height;
+	poppler_page_get_size (page, &width, &height);
+
+	/* For correct rendering of PDF, the PDF is first rendered to a
+	 * transparent image (all alpha = 0). */
+	cairo_surface_t *surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,
+			IMAGE_DPI*width/72.0,
+			IMAGE_DPI*height/72.0);
+	cairo_t *cr = cairo_create (surface);
+	cairo_scale (cr, IMAGE_DPI/72.0, IMAGE_DPI/72.0);
+	cairo_save (cr);
+	poppler_page_render (page, cr);
+	cairo_restore (cr);
+
+	/* Then the image is painted on top of a white "page". Instead of
+	 * creating a second image, painting it white, then painting the
+	 * PDF image over it we can use the CAIRO_OPERATOR_DEST_OVER
+	 * operator to achieve the same effect with the one image. */
+	cairo_set_operator (cr, CAIRO_OPERATOR_DEST_OVER);
+	cairo_set_source_rgb (cr, 1, 1, 1);
+	cairo_paint (cr);
+
+	cairo_status_t status = cairo_status(cr);
+	if (status)
+		printf("%s\n", cairo_status_to_string (status));
+
+	cairo_destroy (cr);
+	slide_meta_data[pageno].src_surface = surface;
+}
+
+static void *async_render_slides(void *data)
+{
+	PopplerDocument *document = (PopplerDocument*) data;
+	const unsigned count = slide_count;
+
+	/* render slides, but the first two are already done */
+	for (unsigned i=2; i<count; ++i) {
+		render_slide(document, i);
+	}
+	return NULL;
+}
+
 static void read_pdf(char *filename)
 {
 	PopplerDocument *document = poppler_document_new_from_file(filename, NULL, NULL);
@@ -73,40 +123,19 @@ static void read_pdf(char *filename)
 	slide_meta_data = malloc(sizeof(slide_info) * count);
 	slide_count = count;
 
-	/* render slides */
-	for (unsigned i=0; i<count; ++i) {
-		slide_info *info = &(slide_meta_data[i]);
-		info->src_surface = NULL;
-		PopplerPage *page = poppler_document_get_page (document, i);
-		double width, height;
-		poppler_page_get_size (page, &width, &height);
-
-		/* For correct rendering of PDF, the PDF is first rendered to a
-		 * transparent image (all alpha = 0). */
-		cairo_surface_t *surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,
-				IMAGE_DPI*width/72.0,
-				IMAGE_DPI*height/72.0);
-		cairo_t *cr = cairo_create (surface);
-		cairo_scale (cr, IMAGE_DPI/72.0, IMAGE_DPI/72.0);
-		cairo_save (cr);
-		poppler_page_render (page, cr);
-		cairo_restore (cr);
-
-		/* Then the image is painted on top of a white "page". Instead of
-		 * creating a second image, painting it white, then painting the
-		 * PDF image over it we can use the CAIRO_OPERATOR_DEST_OVER
-		 * operator to achieve the same effect with the one image. */
-		cairo_set_operator (cr, CAIRO_OPERATOR_DEST_OVER);
-		cairo_set_source_rgb (cr, 1, 1, 1);
-		cairo_paint (cr);
-
-		cairo_status_t status = cairo_status(cr);
-		if (status)
-			printf("%s\n", cairo_status_to_string (status));
-
-		cairo_destroy (cr);
-		slide_meta_data[i].src_surface = surface;
+	for (unsigned i=1; i<count; ++i) {
+		slide_meta_data[i].src_surface = NULL;
 	}
+
+	/* ensure that first two slides are rendered,
+	 * because they are needed initially. */
+	render_slide(document, 0);
+	if (count > 1)
+		render_slide(document, 1);
+
+	/* do the rest in the background */
+	pthread_t th;
+	pthread_create(&th, NULL, async_render_slides, (void*) document);
 }
 
 static void ensure_slide_actor(unsigned i)
